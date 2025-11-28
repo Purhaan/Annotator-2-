@@ -5,14 +5,13 @@
   <title>Universal Mask Creator</title>
   <style>
     body { font-family: Arial, sans-serif; margin: 20px; }
-    canvas { border: 1px solid #ccc; cursor: crosshair; background: black; }
+    canvas { border: 1px solid #ccc; cursor: crosshair; }
     .controls { margin-bottom: 10px; }
     .class-item { margin: 8px 0; }
     label { display: inline-block; width: 100px; }
     input[type="range"] { width: 180px; }
     .rgb-group { display: flex; gap: 10px; align-items: center; }
   </style>
-<base target="_blank">
 </head>
 <body>
 
@@ -43,6 +42,10 @@
     let isDrawing = false;
     let originalFileName = '';
 
+    // Separate canvas for mask only
+    const maskCanvas = document.createElement('canvas');
+    const maskCtx = maskCanvas.getContext('2d');
+
     // Load image
     document.getElementById('imageUpload').addEventListener('change', function (e) {
       const file = e.target.files[0];
@@ -53,11 +56,15 @@
         img.onload = function () {
           canvas.width = img.width;
           canvas.height = img.height;
-          ctx.fillStyle = 'black';
-          ctx.fillRect(0, 0, canvas.width, canvas.height);
-          ctx.globalCompositeOperation = 'source-over';
+          maskCanvas.width = img.width;
+          maskCanvas.height = img.height;
+
+          // Draw image for reference
           ctx.drawImage(img, 0, 0);
-          ctx.globalCompositeOperation = 'source-over';
+
+          // Initialize mask with black
+          maskCtx.fillStyle = 'black';
+          maskCtx.fillRect(0, 0, maskCanvas.width, maskCanvas.height);
         };
         img.src = event.target.result;
       };
@@ -113,7 +120,7 @@
     addClass('class_2', 0, 255, 0);
     addClass('class_3', 0, 0, 255);
 
-    // Drawing logic
+    // Drawing logic (on visible canvas + mask canvas)
     canvas.addEventListener('mousedown', () => isDrawing = true);
     canvas.addEventListener('mouseup', () => isDrawing = false);
     canvas.addEventListener('mousemove', draw);
@@ -125,17 +132,24 @@
       const y = e.clientY - rect.top;
       const size = document.getElementById('brushSize').value;
 
+      // Draw on visible canvas
       ctx.fillStyle = currentColor;
       ctx.beginPath();
       ctx.arc(x, y, size, 0, Math.PI * 2);
       ctx.fill();
+
+      // Draw on mask canvas
+      maskCtx.fillStyle = currentColor;
+      maskCtx.beginPath();
+      maskCtx.arc(x, y, size, 0, Math.PI * 2);
+      maskCtx.fill();
     }
 
-    // Download mask with smart naming
+    // Download mask only (no image)
     function downloadMask() {
       const link = document.createElement('a');
       link.download = `mask_${originalFileName || 'untitled'}.png`;
-      link.href = canvas.toDataURL();
+      link.href = maskCanvas.toDataURL();
       link.click();
     }
   </script>
