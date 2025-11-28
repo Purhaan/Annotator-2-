@@ -5,7 +5,7 @@
   <title>Universal Mask Creator</title>
   <style>
     body { font-family: Arial, sans-serif; margin: 20px; }
-    canvas { border: 1px solid #ccc; cursor: crosshair; }
+    #canvas { border: 1px solid #ccc; cursor: crosshair; }
     .controls { margin-bottom: 10px; }
     .class-item { margin: 8px 0; }
     label { display: inline-block; width: 100px; }
@@ -42,7 +42,7 @@
     let isDrawing = false;
     let originalFileName = '';
 
-    // Separate canvas for mask only
+    // Hidden mask canvas
     const maskCanvas = document.createElement('canvas');
     const maskCtx = maskCanvas.getContext('2d');
 
@@ -59,12 +59,14 @@
           maskCanvas.width = img.width;
           maskCanvas.height = img.height;
 
-          // Draw image for reference
-          ctx.drawImage(img, 0, 0);
-
-          // Initialize mask with black
+          // Clear both
+          ctx.clearRect(0, 0, canvas.width, canvas.height);
           maskCtx.fillStyle = 'black';
           maskCtx.fillRect(0, 0, maskCanvas.width, maskCanvas.height);
+
+          // Draw image on visible canvas only
+          ctx.drawImage(img, 0, 0);
+          ctx.globalCompositeOperation = 'source-over';
         };
         img.src = event.target.result;
       };
@@ -120,7 +122,7 @@
     addClass('class_2', 0, 255, 0);
     addClass('class_3', 0, 0, 255);
 
-    // Drawing logic (on visible canvas + mask canvas)
+    // Drawing logic: draw on both canvases
     canvas.addEventListener('mousedown', () => isDrawing = true);
     canvas.addEventListener('mouseup', () => isDrawing = false);
     canvas.addEventListener('mousemove', draw);
@@ -132,20 +134,21 @@
       const y = e.clientY - rect.top;
       const size = document.getElementById('brushSize').value;
 
-      // Draw on visible canvas
+      // Draw on visible canvas (image + color)
+      ctx.globalCompositeOperation = 'source-over';
       ctx.fillStyle = currentColor;
       ctx.beginPath();
       ctx.arc(x, y, size, 0, Math.PI * 2);
       ctx.fill();
 
-      // Draw on mask canvas
+      // Draw on hidden mask canvas (color only)
       maskCtx.fillStyle = currentColor;
       maskCtx.beginPath();
       maskCtx.arc(x, y, size, 0, Math.PI * 2);
       maskCtx.fill();
     }
 
-    // Download mask only (no image)
+    // Download only the mask canvas (no image)
     function downloadMask() {
       const link = document.createElement('a');
       link.download = `mask_${originalFileName || 'untitled'}.png`;
