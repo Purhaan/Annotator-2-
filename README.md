@@ -1,83 +1,144 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8"/>
-  <title>Universal Bio AI Annotator</title>
+  <meta charset="UTF-8">
+  <title>Universal Mask Creator</title>
   <style>
-    body{font-family:Arial,Helvetica,sans-serif;margin:0;padding:20px;background:#f9f9f9}
-    h1{margin-top:0}
-    canvas{border:1px solid #ccc;cursor:crosshair;background:#fff;display:block;margin-bottom:10px}
-    button{padding:6px 12px;margin-right:6px}
-    select{padding:4px}
+    body { font-family: Arial, sans-serif; margin: 20px; }
+    canvas { border: 1px solid #ccc; cursor: crosshair; background: black; }
+    .controls { margin-bottom: 10px; }
+    .class-item { margin: 8px 0; }
+    label { display: inline-block; width: 100px; }
+    input[type="range"] { width: 180px; }
+    .rgb-group { display: flex; gap: 10px; align-items: center; }
   </style>
+<base target="_blank">
 </head>
 <body>
-  <h1>🔬 Universal Bio AI Annotator</h1>
-  <input type="file" id="imgIn" accept="image/*"/>
-  <br/><br/>
-  <canvas id="c" width="512" height="512"></canvas>
-  <br/>
-  <label>Class:</label>
-  <select id="cls"></select>
-  <button id="saveBtn">💾 Download Mask</button>
+
+  <h2>🎨 Universal Mask Creator</h2>
+  <p>Upload an image, define your classes with RGB values, and paint the mask.</p>
+
+  <div class="controls">
+    <input type="file" id="imageUpload" accept="image/*"><br><br>
+
+    <label>Brush Size:</label>
+    <input type="range" id="brushSize" min="1" max="50" value="10"><br><br>
+
+    <div id="classControls">
+      <h3>Define Classes</h3>
+      <div id="classList"></div>
+      <button onclick="addClass()">+ Add Class</button>
+    </div>
+  </div>
+
+  <canvas id="canvas" width="512" height="512"></canvas><br>
+  <button onclick="downloadMask()">💾 Download Mask</button>
 
   <script>
-  /* ===== CONFIG ===== */
-  const CFG={
-    classes:{
-      0:{name:"background",color:[0,0,0]},
-      1:{name:"nucleus",   color:[255,0,0]},
-      2:{name:"membrane",  color:[0,255,0]},
-      3:{name:"cytoplasm", color:[0,0,255]}
-    }
-  };
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const img = new Image();
+    let currentColor = 'rgb(255,0,0)';
+    let isDrawing = false;
+    let originalFileName = '';
 
-  /* ===== INIT ===== */
-  const c=document.getElementById('c'), ctx=c.getContext('2d');
-  const clsSel=document.getElementById('cls');
-  Object.entries(CFG.classes).forEach(([id,{name,color}])=>{
-    const o=document.createElement('option'); o.value=id; o.text=`${name} (RGB:${color})`; clsSel.appendChild(o);
-  });
-  let curr=0, drawing=false, img=new Image();
-
-  /* ===== LOAD IMAGE ===== */
-  document.getElementById('imgIn').onchange=e=>{
-    const fr=new FileReader();
-    fr.onload=()=>{img.onload=()=>{ctx.drawImage(img,0,0,c.width,c.height);}; img.src=fr.result;};
-    fr.readAsDataURL(e.target.files[0]);
-  };
-
-  /* ===== DRAW ===== */
-  clsSel.onchange=e=>curr=parseInt(e.target.value);
-  c.onmousedown=()=>drawing=true;
-  c.onmouseup=()=>drawing=false;
-  c.onmousemove=e=>{
-    if(!drawing)return;
-    const rect=c.getBoundingClientRect(), x=e.clientX-rect.left, y=e.clientY-rect.top;
-    const [r,g,b]=CFG.classes[curr].color;
-    ctx.fillStyle=`rgb(${r},${g},${b})`;
-    ctx.beginPath(); ctx.arc(x,y,4,0,Math.PI*2); ctx.fill();
-  };
-
-  /* ===== EXPORT MASK ===== */
-  document.getElementById('saveBtn').onclick=()=>{
-    const idt=ctx.getImageData(0,0,c.width,c.height), d=idt.data;
-    const out=new Uint8ClampedArray(d.length);
-    for(let i=0;i<d.length;i+=4){
-      const r=d[i], g=d[i+1], b=d[i+2];
-      let set=[0,0,0];
-      for(const [cid,{color:[cr,cg,cb]}] of Object.entries(CFG.classes)){
-        if(r===cr&&g===cg&&b===cb){set=[cr,cg,cb];break;}
-      }
-      out[i]=set[0]; out[i+1]=set[1]; out[i+2]=set[2]; out[i+3]=255;
-    }
-    const oc=document.createElement('canvas'); oc.width=c.width; oc.height=c.height;
-    oc.getContext('2d').putImageData(new ImageData(out,c.width,c.height),0,0);
-    oc.toBlob(b=>{
-      const a=document.createElement('a'), u=URL.createObjectURL(b);
-      a.href=u; a.download='mask.png'; a.click(); URL.revokeObjectURL(u);
+    // Load image
+    document.getElementById('imageUpload').addEventListener('change', function (e) {
+      const file = e.target.files[0];
+      if (!file) return;
+      originalFileName = file.name.split('.')[0];
+      const reader = new FileReader();
+      reader.onload = function (event) {
+        img.onload = function () {
+          canvas.width = img.width;
+          canvas.height = img.height;
+          ctx.fillStyle = 'black';
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
+          ctx.globalCompositeOperation = 'source-over';
+          ctx.drawImage(img, 0, 0);
+          ctx.globalCompositeOperation = 'source-over';
+        };
+        img.src = event.target.result;
+      };
+      reader.readAsDataURL(file);
     });
-  };
+
+    let classes = [];
+
+    function rgbToString(r, g, b) {
+      return `rgb(${r},${g},${b})`;
+    }
+
+    function addClass(name = '', r = 255, g = 0, b = 0) {
+      const id = classes.length;
+      const div = document.createElement('div');
+      div.className = 'class-item';
+      div.innerHTML = `
+        <label>Class ${id}:</label>
+        <input type="text" placeholder="Name" id="name${id}" value="${name}" style="width:120px;">
+        <div class="rgb-group">
+          R: <input type="range" min="0" max="250" id="r${id}" value="${r}" oninput="updateClass(${id})">
+          G: <input type="range" min="0" max="250" id="g${id}" value="${g}" oninput="updateClass(${id})">
+          B: <input type="range" min="0" max="250" id="b${id}" value="${b}" oninput="updateClass(${id})">
+        </div>
+        <button onclick="selectClass(${id})">Use</button>
+        <span id="preview${id}" style="margin-left:10px;padding:4px 12px;border:1px solid #ccc;">Color</span>
+      `;
+      document.getElementById('classList').appendChild(div);
+      classes.push({ name, r, g, b });
+      updateClass(id);
+    }
+
+    function updateClass(id) {
+      const r = document.getElementById(`r${id}`).value;
+      const g = document.getElementById(`g${id}`).value;
+      const b = document.getElementById(`b${id}`).value;
+      const color = rgbToString(r, g, b);
+      document.getElementById(`preview${id}`).style.backgroundColor = color;
+    }
+
+    function selectClass(id) {
+      const name = document.getElementById(`name${id}`).value || `class_${id}`;
+      const r = document.getElementById(`r${id}`).value;
+      const g = document.getElementById(`g${id}`).value;
+      const b = document.getElementById(`b${id}`).value;
+      currentColor = rgbToString(r, g, b);
+      alert(`Selected: ${name} (${currentColor})`);
+    }
+
+    // Add default classes
+    addClass('background', 0, 0, 0);
+    addClass('class_1', 255, 0, 0);
+    addClass('class_2', 0, 255, 0);
+    addClass('class_3', 0, 0, 255);
+
+    // Drawing logic
+    canvas.addEventListener('mousedown', () => isDrawing = true);
+    canvas.addEventListener('mouseup', () => isDrawing = false);
+    canvas.addEventListener('mousemove', draw);
+
+    function draw(e) {
+      if (!isDrawing) return;
+      const rect = canvas.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+      const size = document.getElementById('brushSize').value;
+
+      ctx.fillStyle = currentColor;
+      ctx.beginPath();
+      ctx.arc(x, y, size, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // Download mask with smart naming
+    function downloadMask() {
+      const link = document.createElement('a');
+      link.download = `mask_${originalFileName || 'untitled'}.png`;
+      link.href = canvas.toDataURL();
+      link.click();
+    }
   </script>
+
 </body>
 </html>
